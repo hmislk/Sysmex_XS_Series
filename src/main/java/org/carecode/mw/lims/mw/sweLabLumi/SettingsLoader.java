@@ -20,8 +20,8 @@ public class SettingsLoader {
             // Read and print the contents of the config.json file
             String filePath = "C:\\CCMW\\SysmaxXS500i\\settings\\SwelabLumi\\config.json";
             String jsonContent = new String(Files.readAllBytes(Paths.get(filePath)));
-            System.out.println("Contents of config.json:");
-            System.out.println(jsonContent);
+            // System.out.println("Contents of config.json:");
+            // System.out.println(jsonContent);
 
             // Now parse the JSON content
             try (FileReader reader = new FileReader(filePath)) {
@@ -29,24 +29,24 @@ public class SettingsLoader {
                 logger.info("Settings loaded from config.json");
 
                 // Debugging output
-                System.out.println("MiddlewareSettings loaded:");
-                System.out.println(middlewareSettings);
+                // System.out.println("MiddlewareSettings loaded:");
+                // System.out.println(middlewareSettings);
 
                 if (middlewareSettings.getAnalyzerDetails() != null) {
-                    System.out.println("Analyzer Name: " + middlewareSettings.getAnalyzerDetails().getAnalyzerName());
+                    // System.out.println("Analyzer Name: " + middlewareSettings.getAnalyzerDetails().getAnalyzerName());
                 } else {
-                    System.out.println("AnalyzerDetails is null");
+                    // System.out.println("AnalyzerDetails is null");
                 }
 
                 if (middlewareSettings.getLimsSettings() != null) {
-                    System.out.println("LIMS Server Base URL: " + middlewareSettings.getLimsSettings().getLimsServerBaseUrl());
+                    // System.out.println("LIMS Server Base URL: " + middlewareSettings.getLimsSettings().getLimsServerBaseUrl());
                 } else {
-                    System.out.println("LimsSettings is null");
+                    // System.out.println("LimsSettings is null");
                 }
             }
         } catch (IOException e) {
             logger.error("Failed to load settings from config.json", e);
-            System.out.println("Failed to load settings: " + e.getMessage());
+            // System.out.println("Failed to load settings: " + e.getMessage());
         }
     }
 

@@ -10,9 +10,11 @@ import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.Random;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -113,17 +115,17 @@ public class Sysmex_XS_Series_Server {
 
                 switch (data) {
                     case ENQ:
-                        logger.debug("Received ENQ");
+//                        logger.debug("Received ENQ");
                         out.write(ACK);
                         out.flush();
-                        logger.debug("Sent ACK");
+//                        logger.debug("Sent ACK");
                         break;
                     case ACK:
-                        logger.debug("ACK Received.");
+//                        logger.debug("ACK Received.");
                         handleAck(clientSocket, out);
                         break;
                     case EOT:
-                        logger.debug("EOT Received");
+//                        logger.debug("EOT Received");
                         handleEot(out);
                         sessionActive = false;
                         break;
@@ -133,19 +135,19 @@ public class Sysmex_XS_Series_Server {
                     case ETX:
                         // End of ASTM message, process it
                         String message = astmMessage.toString().trim();
-                        logger.debug("Complete ASTM Message: " + message);
+//                        logger.debug("Complete ASTM Message: " + message);
 
                         String[] lines = message.split("\n");
 
                         for (String line : lines) {
-                            logger.info("Received data: " + line);
+//                            logger.info("Received data: " + line);
                             processAstmLine(line, dataBundle);
                         }
 
                         astmMessage.setLength(0);  // Clear buffer after processing
                         out.write(ACK);  // Send acknowledgment
                         out.flush();
-                        logger.debug("Sent ACK after processing ASTM message");
+//                        logger.debug("Sent ACK after processing ASTM message");
                         break;
                     default:
                         astmMessage.append((char) data);
@@ -158,67 +160,189 @@ public class Sysmex_XS_Series_Server {
     }
 
     private void processAstmLine(String line, DataBundle dataBundle) {
-        if (line.startsWith("H|")) {
-            logger.info("Header Record Detected.");
-            // Process header if necessary
-        } else if (line.startsWith("P|")) {
-            logger.info("Patient Record Detected.");
-            patientRecord = parsePatientRecord(line);
-            dataBundle.setPatientRecord(patientRecord);
-        } else if (line.startsWith("O|")) {
-            logger.info("Order Record Detected.");
-            orderRecord = parseOrderRecord(line);
-            dataBundle.getOrderRecords().add(orderRecord);
-        } else if (line.startsWith("R|")) {
-            logger.info("Result Record Detected.");
-            ResultsRecord resultsRecord = parseResultsRecord(line);
-            dataBundle.getResultsRecords().add(resultsRecord);
-        } else if (line.startsWith("L|")) {
-            logger.info("Termination Record Detected.");
-            LISCommunicator.pushResults(dataBundle);
+        if (line == null || line.isEmpty()) {
+            return;
+        }
+
+        int firstPipeIndex = line.indexOf('|');
+        if (firstPipeIndex < 0) {
+            logger.warn("No '|' found, skipping line: " + line);
+            return;
+        }
+
+        String frameRecordPart = line.substring(0, firstPipeIndex);
+        String remainder = line.substring(firstPipeIndex + 1);
+
+        if (frameRecordPart.isEmpty()) {
+            logger.warn("Empty frame/record part, skipping line: " + line);
+            return;
+        }
+
+        char recordTypeChar = frameRecordPart.charAt(frameRecordPart.length() - 1);
+        String frameNumberString = frameRecordPart.substring(0, frameRecordPart.length() - 1);
+
+        logger.debug("Frame Number: " + frameNumberString
+                + " | Record Type: " + recordTypeChar
+                + " | Remainder: " + remainder);
+
+        switch (recordTypeChar) {
+            case 'H':
+                logger.info("Header Record Detected.");
+                // processHeader(remainder);
+                break;
+            case 'P':
+                logger.info("Patient Record Detected.");
+                patientRecord = parsePatientRecord(remainder);
+                dataBundle.setPatientRecord(patientRecord);
+                break;
+            case 'O':
+                logger.info("Order Record Detected.");
+                orderRecord = parseOrderRecord(remainder);
+                dataBundle.getOrderRecords().add(orderRecord);
+                break;
+            case 'R':
+                logger.info("Result Record Detected.");
+                ResultsRecord resultsRecord = parseResultsRecord(remainder);
+                dataBundle.getResultsRecords().add(resultsRecord);
+//                LISCommunicator.pushResults(dataBundle);
+                break;
+            case 'L':
+                logger.info("Termination Record Detected.");
+                LISCommunicator.pushResults(dataBundle);
+                break;
+            default:
+                logger.warn("Unknown record type: " + recordTypeChar
+                        + " | Remainder: " + remainder);
         }
     }
 
     public static ResultsRecord parseResultsRecord(String resultSegment) {
-        String[] fields = resultSegment.split("\\|");
+        System.out.println("DEBUG: Entering parseResultsRecord");
+        System.out.println("DEBUG: resultSegment = " + resultSegment);
 
-        if (fields.length < 6) {
-            logger.error("Insufficient fields in ASTM result segment: {}", resultSegment);
+        if (resultSegment == null || resultSegment.isEmpty()) {
+            logger.error("Result segment is null or empty.");
+            System.out.println("ERROR: Result segment is null or empty.");
             return null;
         }
 
-        int frameNumber = Integer.parseInt(fields[0].replaceAll("[^0-9]", ""));
+        String[] fields = resultSegment.split("\\|");
+        System.out.println("DEBUG: Number of fields after split = " + fields.length);
+        for (int i = 0; i < fields.length; i++) {
+            System.out.println("DEBUG: Field[" + i + "] = " + fields[i]);
+        }
+
+        if (fields.length < 6) {
+            logger.error("Insufficient fields in ASTM result segment: {}", resultSegment);
+            System.out.println("ERROR: Insufficient fields in ASTM result segment.");
+            return null;
+        }
+
+        // Extract frame number from field[0]
+        int frameNumber;
+        try {
+            frameNumber = Integer.parseInt(fields[0].replaceAll("[^0-9]", ""));
+            System.out.println("DEBUG: Frame number parsed: " + frameNumber);
+        } catch (NumberFormatException e) {
+            frameNumber = new Random().nextInt(1000);
+            logger.warn("Failed to parse frame number, assigning random: {}", frameNumber);
+            System.out.println("WARNING: Failed to parse frame number, assigned random: " + frameNumber);
+        }
         logger.debug("Frame number extracted: {}", frameNumber);
 
-        String[] testDetails = fields[2].split("\\^");
-        String testCode = testDetails.length > 3 ? testDetails[3] : "UnknownTest";
+        // Extract test code from field[1]
+        String testCode = "UnknownTest";
+        if (fields.length > 1 && fields[1] != null && !fields[1].isEmpty()) {
+            System.out.println("DEBUG: Raw test code field (from field[1]) = " + fields[1]);
+            String[] testDetails = fields[1].split("\\^");
+            System.out.println("DEBUG: Number of parts in testDetails = " + testDetails.length);
+            for (int i = 0; i < testDetails.length; i++) {
+                System.out.println("DEBUG: testDetails[" + i + "] = " + testDetails[i]);
+            }
+            if (testDetails.length >= 5) {
+                testCode = testDetails[4];  // Extract the test name from index 4 (e.g., "WBC")
+                System.out.println("DEBUG: Test code extracted from testDetails[4]: " + testCode);
+            } else {
+                System.out.println("WARNING: Not enough parts in testDetails to extract test code.");
+            }
+        }
         logger.debug("Test code extracted: {}", testCode);
 
-        String resultValue = fields[3];
-        String resultUnits = fields[4];
-        String resultDateTime = fields.length > 12 ? fields[12] : "";
+        // Extract result value from field[2]
+        String resultValueString = fields.length > 2 ? fields[2] : "";
+        // Extract result units from field[3]
+        String resultUnits = fields.length > 3 ? fields[3] : "";
+        // Extract result date/time from field[11] (if present)
+        String resultDateTime = fields.length > 11 ? fields[11] : "";
 
-        return new ResultsRecord(
+        System.out.println("DEBUG: Extracted frameNumber = " + frameNumber);
+        System.out.println("DEBUG: Extracted testCode = " + testCode);
+        System.out.println("DEBUG: Extracted resultValueString (numeric result) = " + resultValueString);
+        System.out.println("DEBUG: Extracted resultUnits = " + resultUnits);
+        System.out.println("DEBUG: Extracted resultDateTime = " + resultDateTime);
+        System.out.println("DEBUG: Using sampleId (class variable) = " + sampleId);
+
+        ResultsRecord record = new ResultsRecord(
                 frameNumber,
                 testCode,
-                resultValue,
-                resultUnits,
+                resultValueString, // This is the numeric result value as a string (e.g., "5.56")
+                resultUnits, // This is the unit string (e.g., "10*3/uL")
                 resultDateTime,
-                "SwelabLumi",
+                "Sysmex_XS_Series",
                 sampleId
         );
+        System.out.println("DEBUG: Created ResultsRecord: " + record);
+        System.out.println("DEBUG: Exiting parseResultsRecord");
+
+        return record;
     }
 
     public static OrderRecord parseOrderRecord(String orderSegment) {
+        System.out.println("DEBUG: Entering parseOrderRecord");
+        System.out.println("DEBUG: orderSegment = " + orderSegment);
+
         String[] fields = orderSegment.split("\\|");
+        System.out.println("DEBUG: Number of fields after split = " + fields.length);
+        for (int i = 0; i < fields.length; i++) {
+            System.out.println("DEBUG: Field[" + i + "] = " + fields[i]);
+        }
 
-        int frameNumber = Integer.parseInt(fields[0].replaceAll("[^0-9]", ""));
-        String[] sampleDetails = fields[1].split("\\^");
-        String sampleId = sampleDetails.length > 1 ? sampleDetails[1] : "UnknownSample";
+        // Extract frame number from fields[0]
+        int frameNumber = 0;
+        try {
+            frameNumber = Integer.parseInt(fields[0].replaceAll("[^0-9]", ""));
+            System.out.println("DEBUG: Frame number extracted: " + frameNumber);
+        } catch (NumberFormatException e) {
+            System.out.println("ERROR: Failed to parse frame number, assigning 0.");
+        }
 
-        List<String> testNames = Arrays.stream(fields[2].split("\\^"))
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toList());
+        // Extract sample ID from fields[2] (if present)
+        sampleId = "UnknownSample";
+        if (fields.length > 2 && fields[2] != null && !fields[2].isEmpty()) {
+            String[] sampleDetails = fields[2].split("\\^");
+            System.out.println("DEBUG: Number of parts in sampleDetails = " + sampleDetails.length);
+            for (int i = 0; i < sampleDetails.length; i++) {
+                System.out.println("DEBUG: sampleDetails[" + i + "] = " + sampleDetails[i]);
+            }
+            if (sampleDetails.length >= 3) {
+                sampleId = sampleDetails[2].trim(); // Trim spaces
+                System.out.println("DEBUG: Extracted sampleId = '" + sampleId + "'");
+            } else {
+                System.out.println("WARNING: Sample ID extraction failed, defaulting to 'UnknownSample'.");
+            }
+        }
+
+        // Extract test names from fields[3] (if present)
+        List<String> testNames = new ArrayList<>();
+        if (fields.length > 3 && fields[3] != null && !fields[3].isEmpty()) {
+            testNames = Arrays.stream(fields[3].split("\\^"))
+                    .filter(s -> !s.isEmpty())
+                    .map(String::trim)
+                    .collect(Collectors.toList());
+            System.out.println("DEBUG: Extracted test names: " + testNames);
+        }
+
+        System.out.println("DEBUG: Exiting parseOrderRecord");
 
         return new OrderRecord(
                 frameNumber,
@@ -231,8 +355,8 @@ public class Sysmex_XS_Series_Server {
     }
 
     private void handleAck(Socket clientSocket, OutputStream out) throws IOException {
-        System.out.println("handleAck = ");
-        System.out.println("needToSendHeaderRecordForQuery = " + needToSendHeaderRecordForQuery);
+        // System.out.println("handleAck = ");
+        // System.out.println("needToSendHeaderRecordForQuery = " + needToSendHeaderRecordForQuery);
         if (needToSendHeaderRecordForQuery) {
             logger.debug("Sending Header");
             String hm = createLimsHeaderRecord();
@@ -265,7 +389,7 @@ public class Sysmex_XS_Series_Server {
             needToSendOrderingRecordForQuery = false;
             needToSendEotForRecordForQuery = true;
         } else if (needToSendEotForRecordForQuery) {
-            System.out.println("Creating an End record = ");
+            // System.out.println("Creating an End record = ");
             String tmq = createLimsTerminationRecord(frameNumber, terminationCode);
             sendResponse(tmq, clientSocket);
             needToSendEotForRecordForQuery = false;
@@ -515,20 +639,22 @@ public class Sysmex_XS_Series_Server {
     }
 
     public static PatientRecord parsePatientRecord(String patientSegment) {
+        System.out.println("parsePatientRecord");
+        System.out.println("patientSegment = " + patientSegment);
         String[] fields = patientSegment.split("\\|");
-        int frameNumber = Integer.parseInt(fields[0].replaceAll("[^0-9]", ""));
-        String patientId = fields[1];
-        String additionalId = fields[3]; // assuming index 2 is always empty as per your example
-        String patientName = fields[4];
-        String patientSecondName = fields[6]; // assuming this follows the same unused pattern
-        String patientSex = fields[7];
-        String race = ""; // Not available in the segment
-        String dob = ""; // Date of birth, not available in the segment
-        String patientAddress = fields[11];
-        String patientPhoneNumber = fields[14];
-        String attendingDoctor = fields[15];
 
-        // Return a new PatientRecord object using the extracted data
+        int frameNumber = fields.length > 0 ? Integer.parseInt(fields[0].replaceAll("[^0-9]", "")) : 0;
+        String patientId = fields.length > 1 ? fields[1] : "";
+        String additionalId = fields.length > 4 ? fields[3] : ""; // Ensure index 3 exists
+        String patientName = fields.length > 5 ? fields[4] : "";
+        String patientSecondName = fields.length > 7 ? fields[6] : "";
+        String patientSex = fields.length > 8 ? fields[7] : "";
+        String race = ""; // Not available
+        String dob = ""; // Not available
+        String patientAddress = fields.length > 12 ? fields[11] : "";
+        String patientPhoneNumber = fields.length > 15 ? fields[14] : "";
+        String attendingDoctor = fields.length > 16 ? fields[15] : "";
+
         return new PatientRecord(
                 frameNumber,
                 patientId,
@@ -585,11 +711,11 @@ public class Sysmex_XS_Series_Server {
     }
 
     public static QueryRecord parseQueryRecord(String querySegment) {
-        System.out.println("querySegment = " + querySegment);
+        // System.out.println("querySegment = " + querySegment);
         String tmpSampleId = extractSampleIdFromQueryRecord(querySegment);
-        System.out.println("tmpSampleId = " + tmpSampleId);
+        // System.out.println("tmpSampleId = " + tmpSampleId);
         sampleId = tmpSampleId;
-        System.out.println("Sample ID: " + tmpSampleId); // Debugging
+        // System.out.println("Sample ID: " + tmpSampleId); // Debugging
         return new QueryRecord(
                 0,
                 tmpSampleId,

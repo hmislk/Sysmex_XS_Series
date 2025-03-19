@@ -31,7 +31,7 @@ public class LISCommunicator {
     private static final Gson gson = new Gson();
 
     public static DataBundle pullTestOrdersForSampleRequests(QueryRecord queryRecord) {
-        System.out.println("pullTestOrdersForSampleRequests");
+        // System.out.println("pullTestOrdersForSampleRequests");
 //        if (testing) {
 //            PatientDataBundle pdb = new PatientDataBundle();
 //            List<String> testNames = Arrays.asList("HDL", "RF2");
@@ -44,22 +44,22 @@ public class LISCommunicator {
 
         try {
             String postSampleDataEndpoint = SettingsLoader.getSettings().getLimsSettings().getLimsServerBaseUrl();
-            System.out.println("postSampleDataEndpoint = " + postSampleDataEndpoint);
+            // System.out.println("postSampleDataEndpoint = " + postSampleDataEndpoint);
             URL url = new URL(postSampleDataEndpoint + "/test_orders_for_sample_requests");
-            System.out.println("url = " + url);
+            // System.out.println("url = " + url);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("Accept", "application/json");
             conn.setDoOutput(true);
-            System.out.println("queryRecord = " + queryRecord);
+            // System.out.println("queryRecord = " + queryRecord);
             // Convert QueryRecord to JSON
 
             DataBundle databundle = new DataBundle();
             databundle.setMiddlewareSettings(SettingsLoader.getSettings());
             databundle.getQueryRecords().add(queryRecord);
             String jsonInputString = gson.toJson(databundle);
-            System.out.println("jsonInputString = " + jsonInputString);
+            // System.out.println("jsonInputString = " + jsonInputString);
             // Send the request
             try (OutputStream os = conn.getOutputStream()) {
                 byte[] input = jsonInputString.getBytes("utf-8");
@@ -67,9 +67,9 @@ public class LISCommunicator {
             }
 
             int responseCode = conn.getResponseCode();
-            System.out.println("responseCode = " + responseCode);
+            // System.out.println("responseCode = " + responseCode);
             if (responseCode == HttpURLConnection.HTTP_OK) {
-                System.out.println("OK responseCode = " + responseCode);
+                // System.out.println("OK responseCode = " + responseCode);
                 // Process response
                 BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"));
                 StringBuilder response = new StringBuilder();
@@ -79,13 +79,13 @@ public class LISCommunicator {
                     response.append(inputLine);
                 }
                 in.close();
-                System.out.println("response.toString() = " + response.toString());
+                // System.out.println("response.toString() = " + response.toString());
                 // Convert the response to a PatientDataBundle object
                 DataBundle patientDataBundle = gson.fromJson(response.toString(), DataBundle.class);
-                System.out.println("patientDataBundle = " + patientDataBundle);
+                // System.out.println("patientDataBundle = " + patientDataBundle);
                 return patientDataBundle;
             } else {
-                System.out.println("POST request failed. Response code: " + responseCode);
+                // System.out.println("POST request failed. Response code: " + responseCode);
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -95,12 +95,12 @@ public class LISCommunicator {
     }
     
     public static void pushResults(DataBundle db) {
-        System.out.println("pushResults = ");
+        // System.out.println("pushResults = ");
         Gson gson = new Gson(); // Ensure Gson is available here for serializing and deserializing
         try {
            
             String pushResultsEndpoint =  SettingsLoader.getSettings().getLimsSettings().getLimsServerBaseUrl() + "/test_results";
-            System.out.println("pushResultsEndpoint = " + pushResultsEndpoint);
+            // System.out.println("pushResultsEndpoint = " + pushResultsEndpoint);
             URL url = new URL(pushResultsEndpoint);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
@@ -115,11 +115,11 @@ public class LISCommunicator {
             ls.setPassword("Buddhika123@"); 
             ms.setAnalyzerDetails(ad);
             ms.setLimsSettings(ls);
-            ms.getAnalyzerDetails().setAnalyzerName("SwelabLumi");
+            ms.getAnalyzerDetails().setAnalyzerName("Sysmex_XS_Series");
             // Set middleware settings and serialize DataBundle to JSON
             db.setMiddlewareSettings(ms );
             String jsonInputString = gson.toJson(db);
-            System.out.println("jsonInputString = " + jsonInputString);
+            // System.out.println("jsonInputString = " + jsonInputString);
 
             // Send the JSON in the request body
             try (OutputStream os = conn.getOutputStream()) {
@@ -128,9 +128,9 @@ public class LISCommunicator {
             }
 
             int responseCode = conn.getResponseCode();
-            System.out.println("responseCode = " + responseCode);
+            // System.out.println("responseCode = " + responseCode);
             if (responseCode == HttpURLConnection.HTTP_OK) {
-                System.out.println("ok");
+                // System.out.println("ok");
                 BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
                 StringBuilder response = new StringBuilder();
                 String inputLine;
@@ -139,7 +139,7 @@ public class LISCommunicator {
                     response.append(inputLine);
                 }
                 in.close();
-                System.out.println("response.toString() = " + response.toString());
+                // System.out.println("response.toString() = " + response.toString());
 
                 // Optionally process the server response (if needed)
                 JsonObject responseObject = JsonParser.parseString(response.toString()).getAsJsonObject();
@@ -167,7 +167,7 @@ public class LISCommunicator {
                 }
 
             } else {
-                System.out.println("POST request failed. Response code: " + responseCode);
+                // System.out.println("POST request failed. Response code: " + responseCode);
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -175,22 +175,22 @@ public class LISCommunicator {
     }
 
     public static void pushResultsOld(DataBundle patientDataBundle) {
-        System.out.println("pushResults = ");
+        // System.out.println("pushResults = ");
         try {
-            System.out.println("SettingsLoader.getSettings() = " + SettingsLoader.getSettings());
-            System.out.println("SettingsLoader.getSettings().getLimsSettings() = " + SettingsLoader.getSettings().getLimsSettings());
-            System.out.println("SettingsLoader.getSettings().getLimsSettings().getLimsServerBaseUrl() = " + SettingsLoader.getSettings().getLimsSettings().getLimsServerBaseUrl());
+            // System.out.println("SettingsLoader.getSettings() = " + SettingsLoader.getSettings());
+            // System.out.println("SettingsLoader.getSettings().getLimsSettings() = " + SettingsLoader.getSettings().getLimsSettings());
+            // System.out.println("SettingsLoader.getSettings().getLimsSettings().getLimsServerBaseUrl() = " + SettingsLoader.getSettings().getLimsSettings().getLimsServerBaseUrl());
             String pushResultsEndpoint = SettingsLoader.getSettings().getLimsSettings().getLimsServerBaseUrl() + "/test_results";
 
             
             for(ResultsRecord rr:patientDataBundle.getResultsRecords()){
-                System.out.println("rr value  = " + rr.getResultValue() + "");
-                System.out.println("rr value string = " + rr.getResultValueString());
+                // System.out.println("rr value  = " + rr.getResultValue() + "");
+                // System.out.println("rr value string = " + rr.getResultValueString());
             }
             
             
             URL url = new URL(pushResultsEndpoint);
-            System.out.println("url = " + url);
+            // System.out.println("url = " + url);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
@@ -199,7 +199,7 @@ public class LISCommunicator {
             // Serialize PatientDataBundle to JSON
             patientDataBundle.setMiddlewareSettings(SettingsLoader.getSettings());
             String jsonInputString = gson.toJson(patientDataBundle);
-            System.out.println("jsonInputString = " + jsonInputString);
+            // System.out.println("jsonInputString = " + jsonInputString);
             // Send the JSON in the request body
             try (OutputStream os = conn.getOutputStream()) {
                 byte[] input = jsonInputString.getBytes("utf-8");
@@ -207,9 +207,9 @@ public class LISCommunicator {
             }
 
             int responseCode = conn.getResponseCode();
-            System.out.println("responseCode = " + responseCode);
+            // System.out.println("responseCode = " + responseCode);
             if (responseCode == HttpURLConnection.HTTP_OK) {
-                System.out.println("ok");
+                // System.out.println("ok");
                 BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"));
                 StringBuilder response = new StringBuilder();
                 String inputLine;
@@ -219,7 +219,7 @@ public class LISCommunicator {
                 }
                 in.close();
 
-                System.out.println("response.toString() = " + response.toString());
+                // System.out.println("response.toString() = " + response.toString());
 
                 // Optionally process the server response (if needed)
                 JsonObject responseObject = JsonParser.parseString(response.toString()).getAsJsonObject();
@@ -248,7 +248,7 @@ public class LISCommunicator {
                 }
 
             } else {
-                System.out.println("POST request failed. Response code: " + responseCode);
+                // System.out.println("POST request failed. Response code: " + responseCode);
             }
         } catch (Exception e) {
             e.printStackTrace();
