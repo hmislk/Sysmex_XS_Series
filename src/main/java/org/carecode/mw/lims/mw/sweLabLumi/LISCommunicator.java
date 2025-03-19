@@ -25,7 +25,7 @@ import org.carecode.lims.libraries.ResultsRecord;
 
 public class LISCommunicator {
     
-    public static final Logger logger = LogManager.getLogger(SweLabLumiServer.class.getName());
+    public static final Logger logger = LogManager.getLogger(Sysmex_XS_Series_Server.class.getName());
 
 //    static boolean testing = true;
     private static final Gson gson = new Gson();
@@ -223,11 +223,11 @@ public class LISCommunicator {
 
                 // Optionally process the server response (if needed)
                 JsonObject responseObject = JsonParser.parseString(response.toString()).getAsJsonObject();
-                SweLabLumi.logger.info("Response from server: " + responseObject.toString());
+                Sysmex_XS_Series.logger.info("Response from server: " + responseObject.toString());
 
 // Extract status
                 String status = responseObject.get("status").getAsString();
-                SweLabLumi.logger.info("Status: " + status);
+                Sysmex_XS_Series.logger.info("Status: " + status);
 
 // Extract the list of ResultsRecord objects
                 Gson gson = new Gson();
@@ -242,7 +242,7 @@ public class LISCommunicator {
 
 // Log and process the ResultsRecord objects as needed
                 for (ResultsRecord record : resultsRecords) {
-                    SweLabLumi.logger.info("Sample ID: " + record.getSampleId()
+                    Sysmex_XS_Series.logger.info("Sample ID: " + record.getSampleId()
                             + ", Test: " + record.getTestCode()
                             + ", Status: " + record.getStatus());
                 }

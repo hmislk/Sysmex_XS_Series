@@ -7,12 +7,12 @@ import org.carecode.lims.libraries.PatientRecord;
 import org.carecode.lims.libraries.QueryRecord;
 import org.carecode.lims.libraries.ResultsRecord;
 
-public class SweLabLumi {
+public class Sysmex_XS_Series {
 
     static boolean testingPullingTestOrders = false;
     static boolean testingPushingTestResults = false;
 
-    public static final Logger logger = LogManager.getLogger(SweLabLumi.class);
+    public static final Logger logger = LogManager.getLogger(Sysmex_XS_Series.class);
 
     public static void main(String[] args) {
         if (testingPullingTestOrders) {
@@ -53,7 +53,7 @@ public class SweLabLumi {
         }
 
         int port = SettingsLoader.getSettings().getAnalyzerDetails().getAnalyzerPort();
-        SweLabLumiServer server = new SweLabLumiServer();
+        Sysmex_XS_Series_Server server = new Sysmex_XS_Series_Server();
         server.start(port);
     }
 

@@ -22,9 +22,9 @@ import org.carecode.lims.libraries.PatientRecord;
 import org.carecode.lims.libraries.QueryRecord;
 import org.carecode.lims.libraries.ResultsRecord;
 
-public class SweLabLumiServer {
+public class Sysmex_XS_Series_Server {
 
-    private static final Logger logger = LogManager.getLogger(SweLabLumiServer.class);
+    private static final Logger logger = LogManager.getLogger(Sysmex_XS_Series_Server.class);
 
     private static final char ENQ = 0x05;
     private static final char ACK = 0x06;
@@ -96,107 +96,14 @@ public class SweLabLumiServer {
     }
 
     private void handleClient(Socket clientSocket) {
-    LISCommunicator lisCommunicator = new LISCommunicator();
+        LISCommunicator lisCommunicator = new LISCommunicator();
 
-    try (InputStream in = new BufferedInputStream(clientSocket.getInputStream()); OutputStream out = new BufferedOutputStream(clientSocket.getOutputStream())) {
-
-        StringBuilder hl7Message = new StringBuilder();  // To capture HL7 message
-        boolean sessionActive = true;
-        String sampleId = "";  // Store sample ID
-
-        while (sessionActive) {
-            int data = in.read();
-            if (data == -1) {
-                break;  // End of stream
-            }
-
-            switch (data) {
-                case ENQ:
-                    logger.debug("Received ENQ");
-                    out.write(ACK);
-                    out.flush();
-                    logger.debug("Sent ACK");
-                    break;
-                case ACK:
-                    logger.debug("ACK Received.");
-                    handleAck(clientSocket, out);
-                    break;
-                case EOT:
-                    logger.debug("EOT Received");
-                    handleEot(out);
-                    sessionActive = false;
-                    break;
-                case '\r':  // ASCII 13, treat as end of message
-                    if (hl7Message.length() > 0) {
-                        String message = hl7Message.toString();
-                        logger.debug("Complete HL7 Message: " + message);
-                        
-                        // Split the message into lines
-                        String[] lines = message.split("\n");
-
-                        // Process each line similarly to `connectAndReadData`
-                        for (String line : lines) {
-                            logger.info("Received data: " + line);
-
-                            // Extract the sample ID from OBR segment
-                            if (line.startsWith("OBR|")) {
-                                String[] parts = line.split("\\|");
-                                if (parts.length > 3) {
-                                    sampleId = parts[3];
-                                    logger.info("Sample ID extracted: " + sampleId);
-                                }
-                            } 
-                            // Handle OBX segments for test results
-                            else if (line.startsWith("OBX|")) {
-                                String[] parts = line.split("\\|");
-                                if (parts.length > 6) {
-                                    String[] testDetails = parts[3].split("\\^");
-                                    String testCode = testDetails[1];  // Getting the descriptive part (e.g., WBC)
-                                    String resultValue = parts[5];
-                                    String resultUnits = parts[6];
-                                    String resultDateTime = "";  // Assuming the result date-time isn't provided in the segment
-
-                                    // Create ResultsRecord with the constructor
-                                    ResultsRecord rr = new ResultsRecord(testCode, resultValue, resultUnits,
-                                            resultDateTime, "SwelabLumi", sampleId);
-
-                                    DataBundle db = new DataBundle();
-                                    db.setMiddlewareSettings(SettingsLoader.getSettings());
-                                    db.getResultsRecords().add(rr);
-
-                                    // Push results using LISCommunicator
-                                    LISCommunicator.pushResults(db);
-
-                                    logger.info("Test Code: " + testCode);
-                                    logger.info("Result Value: " + resultValue);
-                                    logger.info("Result Units: " + resultUnits);
-                                }
-                            }
-                        }
-
-                        hl7Message.setLength(0);  // Clear message buffer after processing
-                        out.write(ACK);  // Send acknowledgment
-                        out.flush();
-                        logger.debug("Sent ACK after processing HL7 message");
-                    }
-                    break;
-                default:
-                    // Append all received data to the HL7 message
-                    hl7Message.append((char) data);
-                    break;
-            }
-        }
-    } catch (IOException e) {
-        logger.error("Error during client communication", e);
-    }
-}
-
-    
-    private void handleClientOld2(Socket clientSocket) {
         try (InputStream in = new BufferedInputStream(clientSocket.getInputStream()); OutputStream out = new BufferedOutputStream(clientSocket.getOutputStream())) {
 
-            StringBuilder hl7Message = new StringBuilder();  // To capture HL7 message
+            StringBuilder astmMessage = new StringBuilder();
             boolean sessionActive = true;
+            String sampleId = "";
+            DataBundle dataBundle = new DataBundle();
 
             while (sessionActive) {
                 int data = in.read();
@@ -220,19 +127,28 @@ public class SweLabLumiServer {
                         handleEot(out);
                         sessionActive = false;
                         break;
-                    case '\r':  // ASCII 13, treat as end of message
-                        if (hl7Message.length() > 0) {
-                            logger.debug("Complete HL7 Message: " + hl7Message.toString());
-                            processMessage(hl7Message.toString(), clientSocket);
-                            hl7Message.setLength(0);  // Clear message buffer after processing
-                            out.write(ACK);  // Send acknowledgment
-                            out.flush();
-                            logger.debug("Sent ACK after processing HL7 message");
+                    case STX:
+                        astmMessage.setLength(0); // Start of new ASTM frame
+                        break;
+                    case ETX:
+                        // End of ASTM message, process it
+                        String message = astmMessage.toString().trim();
+                        logger.debug("Complete ASTM Message: " + message);
+
+                        String[] lines = message.split("\n");
+
+                        for (String line : lines) {
+                            logger.info("Received data: " + line);
+                            processAstmLine(line, dataBundle);
                         }
+
+                        astmMessage.setLength(0);  // Clear buffer after processing
+                        out.write(ACK);  // Send acknowledgment
+                        out.flush();
+                        logger.debug("Sent ACK after processing ASTM message");
                         break;
                     default:
-                        // Append all received data to the HL7 message
-                        hl7Message.append((char) data);
+                        astmMessage.append((char) data);
                         break;
                 }
             }
@@ -241,73 +157,77 @@ public class SweLabLumiServer {
         }
     }
 
-    private void handleClientOld(Socket clientSocket) {
-        try (InputStream in = new BufferedInputStream(clientSocket.getInputStream()); OutputStream out = new BufferedOutputStream(clientSocket.getOutputStream())) {
-            StringBuilder asciiDebugInfo = new StringBuilder();
-            boolean sessionActive = true;
-            boolean inChecksum = false;
-            int checksumCount = 0;
-
-            while (sessionActive) {
-                int data = in.read();
-
-                if (inChecksum) {
-                    asciiDebugInfo.append((char) data).append(" (").append(data).append(") ");  // Append character and its ASCII value
-                    checksumCount++;
-                    if (checksumCount == 4) {
-                        inChecksum = false;
-                        checksumCount = 0;
-                        asciiDebugInfo.setLength(0);  // Clear the StringBuilder for the next use
-                    }
-                    continue;
-                }
-
-                switch (data) {
-                    case ENQ:
-                        logger.debug("Received ENQ");
-                        out.write(ACK);
-                        out.flush();
-                        logger.debug("Sent ACK");
-                        break;
-                    case ACK:
-                        logger.debug("ACK Received.");
-                        handleAck(clientSocket, out);
-                        break;
-                    case STX:
-                        inChecksum = true;
-                        StringBuilder message = new StringBuilder();
-                        asciiDebugInfo = new StringBuilder();  // To store ASCII values for debugging
-
-                        while ((data = in.read()) != ETX) {
-                            if (data == -1) {
-                                break;
-                            }
-                            message.append((char) data);
-                            asciiDebugInfo.append("[").append(data).append("] ");  // Append ASCII value in brackets
-                        }
-                        logger.debug("Message received: " + message);
-                        processMessage(message.toString(), clientSocket);
-                        out.write(ACK);
-                        out.flush();
-                        logger.debug("Sent ACK after STX-ETX block");
-                        break;
-                    case EOT:
-                        logger.debug("EOT Received");
-                        handleEot(out);
-                        break;
-                    default:
-                        if (!inChecksum) {
-                            logger.debug("Received unexpected data: " + (char) data + " (ASCII: " + data + ")");
-                            asciiDebugInfo.append((char) data).append(" (").append(data).append(") ");
-                        } else {
-                            logger.debug("Data within checksum calculation: " + (char) data + " (ASCII: " + data + ")");
-                        }
-                        break;
-                }
-            }
-        } catch (IOException e) {
-            logger.error("Error during client communication", e);
+    private void processAstmLine(String line, DataBundle dataBundle) {
+        if (line.startsWith("H|")) {
+            logger.info("Header Record Detected.");
+            // Process header if necessary
+        } else if (line.startsWith("P|")) {
+            logger.info("Patient Record Detected.");
+            patientRecord = parsePatientRecord(line);
+            dataBundle.setPatientRecord(patientRecord);
+        } else if (line.startsWith("O|")) {
+            logger.info("Order Record Detected.");
+            orderRecord = parseOrderRecord(line);
+            dataBundle.getOrderRecords().add(orderRecord);
+        } else if (line.startsWith("R|")) {
+            logger.info("Result Record Detected.");
+            ResultsRecord resultsRecord = parseResultsRecord(line);
+            dataBundle.getResultsRecords().add(resultsRecord);
+        } else if (line.startsWith("L|")) {
+            logger.info("Termination Record Detected.");
+            LISCommunicator.pushResults(dataBundle);
         }
+    }
+
+    public static ResultsRecord parseResultsRecord(String resultSegment) {
+        String[] fields = resultSegment.split("\\|");
+
+        if (fields.length < 6) {
+            logger.error("Insufficient fields in ASTM result segment: {}", resultSegment);
+            return null;
+        }
+
+        int frameNumber = Integer.parseInt(fields[0].replaceAll("[^0-9]", ""));
+        logger.debug("Frame number extracted: {}", frameNumber);
+
+        String[] testDetails = fields[2].split("\\^");
+        String testCode = testDetails.length > 3 ? testDetails[3] : "UnknownTest";
+        logger.debug("Test code extracted: {}", testCode);
+
+        String resultValue = fields[3];
+        String resultUnits = fields[4];
+        String resultDateTime = fields.length > 12 ? fields[12] : "";
+
+        return new ResultsRecord(
+                frameNumber,
+                testCode,
+                resultValue,
+                resultUnits,
+                resultDateTime,
+                "SwelabLumi",
+                sampleId
+        );
+    }
+
+    public static OrderRecord parseOrderRecord(String orderSegment) {
+        String[] fields = orderSegment.split("\\|");
+
+        int frameNumber = Integer.parseInt(fields[0].replaceAll("[^0-9]", ""));
+        String[] sampleDetails = fields[1].split("\\^");
+        String sampleId = sampleDetails.length > 1 ? sampleDetails[1] : "UnknownSample";
+
+        List<String> testNames = Arrays.stream(fields[2].split("\\^"))
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toList());
+
+        return new OrderRecord(
+                frameNumber,
+                sampleId,
+                testNames,
+                "", // No specimen code
+                "", // No order date/time
+                "" // No test information
+        );
     }
 
     private void handleAck(Socket clientSocket, OutputStream out) throws IOException {
@@ -594,77 +514,6 @@ public class SweLabLumiServer {
         return terminationStart + terminationInfo;
     }
 
-    private void processMessage(String data, Socket clientSocket) {
-
-        if (data.length() >= 3 && Character.isDigit(data.charAt(0)) && data.charAt(2) == '|') {
-            char recordType = data.charAt(1);
-
-            switch (recordType) {
-                case 'H': // Header Record
-                    patientDataBundle = new DataBundle();
-                    receivingQuery = false;
-                    receivingResults = false;
-                    respondingQuery = false;
-                    respondingResults = false;
-                    needToSendEotForRecordForQuery = false;
-                    needToSendOrderingRecordForQuery = false;
-                    needToSendPatientRecordForQuery = false;
-                    needToSendHeaderRecordForQuery = false;
-                    logger.debug("Header Record Received: " + data);
-                    break;
-                case 'R': // Result Record
-                    logger.debug("Result Record Received: " + data);
-                    respondingResults = true;
-                    respondingQuery = false;
-                    resultRecord = parseResultsRecord(data);
-                    getPatientDataBundle().getResultsRecords().add(resultRecord);
-                    logger.debug("Result Record Parsed: " + resultRecord);
-                    break;
-                case 'Q': // Query Record
-                    System.out.println("Query result received" + data);
-                    receivingQuery = false;
-
-                    respondingQuery = true;
-                    needToSendHeaderRecordForQuery = true;
-                    logger.debug("Query Record Received: " + data);
-                    queryRecord = parseQueryRecord(data);
-                    getPatientDataBundle().getQueryRecords().add(queryRecord);
-                    logger.debug("Parsed the Query Record: " + queryRecord);
-                    break;
-                case 'P': // Patient Record
-                    logger.debug("Patient Record Received: " + data);
-                    patientRecord = parsePatientRecord(data);
-                    getPatientDataBundle().setPatientRecord(patientRecord);
-                    logger.debug("Patient Record Parsed: " + patientRecord);
-                    break;
-                case 'L': // Termination Record
-                    logger.debug("Termination Record Received: " + data);
-                    break;
-                case 'C': // Comment Record
-                    logger.debug("Comment Record Received: " + data);
-
-                    break;
-                case 'O': // Order Record or other type represented by 'O'
-                    System.out.println("Order result received" + data);
-                    logger.debug("Query Record Received: " + data);
-                    String tmpSampleId = extractSampleIdFromOrderRecord(data);
-                    System.out.println("tmpSampleId = " + tmpSampleId);
-                    sampleId = tmpSampleId;
-                    QueryRecord qr = new QueryRecord(0, sampleId, sampleId, "");
-                    getPatientDataBundle().getQueryRecords().add(qr);
-//                    OrderRecord orderRecord = new OrderRecord(2, sampleId, null, sampleId, "", "");
-//                    getPatientDataBundle().getOrderRecords().add(orderRecord);
-                    logger.debug("Parsed the Query Record: " + queryRecord);
-                    break;
-                default: // Unknown Record
-                    logger.debug("Unknown Record Received: " + data);
-                    break;
-            }
-        } else {
-            logger.debug("Invalid Record Structure: " + data);
-        }
-    }
-
     public static PatientRecord parsePatientRecord(String patientSegment) {
         String[] fields = patientSegment.split("\\|");
         int frameNumber = Integer.parseInt(fields[0].replaceAll("[^0-9]", ""));
@@ -692,92 +541,6 @@ public class SweLabLumiServer {
                 patientAddress,
                 patientPhoneNumber,
                 attendingDoctor
-        );
-    }
-
-    public static ResultsRecord parseResultsRecord(String resultSegment) {
-        // Split the segment into fields
-        String[] fields = resultSegment.split("\\|");
-
-        // Ensure that the fields array has the expected length
-        if (fields.length < 6) {
-            logger.error("Insufficient fields in the result segment: {}", resultSegment);
-            return null; // or throw an exception
-        }
-
-        // Extract the frame number by removing non-numeric characters
-        int frameNumber = Integer.parseInt(fields[0].replaceAll("[^0-9]", ""));
-        logger.debug("Frame number extracted: {}", frameNumber);
-
-        // Test code should be correctly identified assuming it's provided correctly in the fields[1]
-        String testCode = fields[2].split("\\^")[3]; // Extracting the correct part of the test code
-        logger.debug("Test code extracted: {}", testCode);
-
-        // Result value parsing assumes the result is in the fourth field
-        double resultValue = 0.0;
-        String resultValueString = fields[3];
-
-        try {
-            resultValue = Double.parseDouble(fields[3]);
-            logger.debug("Result value extracted: {}", resultValue);
-        } catch (NumberFormatException e) {
-            logger.error("Failed to parse result value from segment: {}", resultSegment, e);
-        }
-
-        // Units and other details
-        String resultUnits = fields[4];
-        logger.debug("Result units extracted: {}", resultUnits);
-        String resultDateTime = fields[12];
-        logger.debug("Result date-time extracted: {}", resultDateTime);
-        String instrumentName = fields[13];
-        logger.debug("Instrument name extracted: {}", instrumentName);
-        System.out.println("sampleId = " + sampleId);
-        // Return a new ResultsRecord object initialized with extracted values
-        return new ResultsRecord(
-                frameNumber,
-                testCode,
-                resultValueString,
-                resultUnits,
-                resultDateTime,
-                instrumentName,
-                sampleId
-        );
-
-    }
-
-    public static OrderRecord parseOrderRecord(String orderSegment) {
-
-        String[] fields = orderSegment.split("\\|");
-
-        // Extract frame number and remove non-numeric characters (<STX>, etc.)
-        int frameNumber = Integer.parseInt(fields[0].replaceAll("[^0-9]", ""));
-
-        // Sample ID and associated data
-        String[] sampleDetails = fields[1].split("\\^");
-        String sampleId = sampleDetails[1]; // Adjust index based on your specific message structure
-
-        // Extract test names, assuming they are separated by '^' inside a field like ^^^test1^test2
-        List<String> testNames = Arrays.stream(fields[2].split("\\^"))
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toList());
-
-        // Specimen code
-        String specimenCode = fields[3];
-
-        // Order date and time
-        String orderDateTime = fields[4];
-
-        // Test information
-        String testInformation = fields[6]; // Assuming test information is in the 7th segment
-
-        // Return a new OrderRecord object using the extracted data
-        return new OrderRecord(
-                frameNumber,
-                sampleId,
-                testNames,
-                specimenCode,
-                orderDateTime,
-                testInformation
         );
     }
 
