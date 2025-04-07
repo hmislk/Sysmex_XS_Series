@@ -9,9 +9,13 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 import java.util.Random;
@@ -269,7 +273,30 @@ public class Sysmex_XS_Series_Server {
         logger.debug("Test code extracted: {}", testCode);
 
         // Extract result value from field[2]
-        String resultValueString = fields.length > 2 ? fields[2] : "";
+        String resultValueString = "";
+//        sadasdas;
+
+        String baseFolderPath = SettingsLoader.getSettings().getAnalyzerDetails().getHostIP();
+        String additionalPath = "";
+        String absoluteFileNameWithPath = "";
+
+        resultValueString = fields.length > 2 ? fields[2] : "";
+
+        switch (testCode) {
+            case "DIST_PLT":
+            case "DIST_RBC":
+            case "SCAT_DIFF":
+                additionalPath = convertTextToPath(resultValueString);
+                if (!baseFolderPath.endsWith("/")) {
+                    baseFolderPath += "/";
+                }
+                absoluteFileNameWithPath = baseFolderPath + additionalPath;
+                String base64Text = encodePngFileAsBase64Text(absoluteFileNameWithPath);
+                resultValueString = base64Text;
+                break;
+            default:
+        }
+
         // Extract result units from field[3]
         String resultUnits = fields.length > 3 ? fields[3] : "";
         // Extract result date/time from field[11] (if present)
@@ -295,6 +322,25 @@ public class Sysmex_XS_Series_Server {
         System.out.println("DEBUG: Exiting parseResultsRecord");
 
         return record;
+    }
+
+    public static String encodePngFileAsBase64Text(String absoluteFilePath) {
+        try {
+            Path path = Paths.get(absoluteFilePath);
+            byte[] imageBytes = Files.readAllBytes(path);
+            String base64 = Base64.getEncoder().encodeToString(imageBytes);
+            return "^Image^PNG^Base64^" + base64;
+        } catch (IOException ex) {
+            ex.printStackTrace(); // Handle properly as per your logging or error handling policy
+            return "";
+        }
+    }
+
+    private static String convertTextToPath(String resultValueString) {
+        if (resultValueString == null || resultValueString.isEmpty()) {
+            return "";
+        }
+        return resultValueString.replace("&R&", "/");
     }
 
     public static OrderRecord parseOrderRecord(String orderSegment) {
